@@ -50,3 +50,17 @@ The C# driver for MongoDB.
 
 - The first commit message and the PR message start with a JIRA number: `CSHARP-1234: Description`
 - The branch name will usually match the JIRA number: `CSHARP-1234`
+
+## Cursor Cloud specific instructions
+
+The startup update script runs `dotnet restore CSharpDriver.sln`. The .NET 10 SDK (plus 6.0/3.1 runtimes) is pre-installed in `$HOME/.dotnet` and on `PATH` via `~/.bashrc`; standard `dotnet build`/`dotnet test` commands (see `## Commands`) work as-is.
+
+- MongoDB is installed (`mongodb-org` 8.0) but there is no systemd, so `mongod` must be started manually and is NOT auto-started by the update script. Start it as a single-node replica set with test commands enabled (data dir `/data/db` persists in the snapshot, including the replica-set config, so re-running just re-elects the primary):
+  ```
+  mongod --dbpath /data/db --bind_ip 127.0.0.1 --port 27017 --replSet rs0 --setParameter enableTestCommands=1
+  ```
+  On a brand-new data dir only, initiate once: `mongosh --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'`.
+- The replica set + `enableTestCommands=1` matter: many integration tests use `configureFailPoint`/`failCommand` and write-concern-error behavior that a bare standalone `mongod` rejects (`CommandNotFound`). A plain standalone will show spurious failures in suites like `CrudProseTests`.
+- Building `MongoDB.Driver.Encryption` downloads and gpg-verifies native `libmongocrypt` binaries from GitHub at build time (needs network + `gpg`/`tar`, both present). The `gpg: This key is not certified with a trusted signature!` warning during build is expected and harmless.
+- The default test category is `Integration`, so the standard test commands require a running `mongod`. For a server-free run, filter with `--filter "Category!=Integration"` (see `evergreen/run-unit-tests.sh`).
+- There is no separate lint step: C# code analysis runs via the `*.ruleset` files during `dotnet build`. CI `pr.yml` only validates PR title/label metadata.
